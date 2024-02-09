@@ -25,6 +25,8 @@ mainLoopData = evalin('base', 'mainLoopData');
 if indVol <= P.nrSkipVol
     return
 end
+
+% Current volume index
 indVolNorm = mainLoopData.indVolNorm;
 condition = mainLoopData.condition;
 
@@ -47,27 +49,29 @@ if flags.isPSC && (strcmp(P.Prot, 'Cont') || strcmp(P.Prot, 'ContTask'))
     % NF estimation condition
     if condition == 2
 
-        % count NF regulation blocks
-        % index for Regulation block == 2
+        % Check if we are at the beginning of an NF regulation block
+        % The condition index for Regulation block is 2
         k = cellfun(@(x) x(1) == indVolNorm, P.ProtCond{ 2 });
-        if any(k)
+        if any(k) % If we are at the beginning of any of the regulation blocks
+            % Update the value of blockNF to indicate the current NF block value that we are in
             blockNF = find(k);
             firstNF = indVolNorm;
         end
 
-        % Get reference baseline in cumulated way across the RUN,
-        % or any other fashion
+        % Get the baseline block immediately preceding the current NF regulation block
+        % iblockBAS is a list of volume indexes in that baseline block.
         i_blockBAS = [];
-        if blockNF<2
+        if blockNF<2 % If we are in the first NF block, get the first baseline block
             % according to json protocol
-            % index for Baseline == 1
+            % index for Baseline condition is 1
             i_blockBAS = (P.ProtCond{ 1 }{blockNF}(1)+nVolDelay):(P.ProtCond{ 1 }{blockNF}(end));
-        else
+        else % otherwise get the baseline block before the current nf block
             for iBas = 1:blockNF
                 i_blockBAS = (P.ProtCond{ 1 }{iBas}(1)+nVolDelay):(P.ProtCond{ 1 }{iBas}(end));
             end
         end
 
+        % For each ROI calculate the median in the previous baseline block and the current volume which is in a NF block
         for indRoi = 1:loopNrROIs
             mBas = median(mainLoopData.scalProcTimeSeries(indRoi,i_blockBAS));
             mCond = mainLoopData.scalProcTimeSeries(indRoi,indVolNorm);
@@ -75,6 +79,8 @@ if flags.isPSC && (strcmp(P.Prot, 'Cont') || strcmp(P.Prot, 'ContTask'))
         end
 
         % compute average %SC feedback value
+        % P.RoiAnatOperation is a piece of matlab code defined in the .ini file of the experiment
+        % It could for example be a string that contains 'median(norm_percValues)'
         tmp_fbVal = eval(P.RoiAnatOperation);
         dispValue = round(P.MaxFeedbackVal*tmp_fbVal, P.FeedbackValDec);
 
