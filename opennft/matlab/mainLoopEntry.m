@@ -106,6 +106,13 @@ if (strcmp(P.Prot, 'Inter') ||  strcmp(P.Prot, 'Cont') || strcmp(P.Prot, 'ContTa
     displayData.condition = condition;
     displayData.dispValue = mainLoopData.dispValue;
     displayData.Reward = mainLoopData.Reward;
+
+    % Store the previous condition. This is useful for condition transition logic
+    if mainLoopData.indVolNorm > 1
+        displayData.previousCondition = P.vectEncCond(indVol - P.nrSkipVol - 1);
+    else
+        displayData.previousCondition = 0; % no previous condition so just assign a 0
+    end
 end
 
 %% DCM

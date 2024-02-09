@@ -30,8 +30,8 @@ MAIN_MATLAB_NAME = 'MATLAB_NFB_MAIN'
 PTB_MATLAB_NAME = 'MATLAB_NFB_PTB'
 MODEL_HELPER_MATLAB_NAME = 'MATLAB_NFB_MODEL_HELPER'
 
-MAIN_MATLAB_STARTUP_OPTIONS = '-nodesktop'
-PTB_MATLAB_STARTUP_OPTIONS = '-nodesktop'
+MAIN_MATLAB_STARTUP_OPTIONS = '-desktop'
+PTB_MATLAB_STARTUP_OPTIONS = '-desktop'
 MODEL_HELPER_MATLAB_STARTUP_OPTIONS = '-nodesktop'
 
 MATLAB_NAME_SUFFIX = ''
@@ -56,6 +56,11 @@ USE_MATLAB_MODEL_HELPER = False
 
 # use PTB helper and include PTB option in parameters
 USE_PTB_HELPER = True
+
+# use visual feedback
+USE_PTB_SCREEN = False
+# use auditory feedback
+USE_PTB_SOUND = True
 
 # use only when FFileDialog.by crashes when opening the dialog windows
 DONOT_USE_QFILE_NATIVE_DIALOG = False

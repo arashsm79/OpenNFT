@@ -23,7 +23,6 @@ import threading
 class PtbScreen(object):
     """Asynchronous PTB display
     """
-
     # --------------------------------------------------------------------------
     def __init__(self, matlab_helper: mlproc.MatlabSharedEngineHelper, recorder: erd.EventRecorder, endEvent: mp.Event):
         self.eng = None

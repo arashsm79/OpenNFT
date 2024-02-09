@@ -65,6 +65,7 @@ from opennft import (
     conversions,
     runmatlab,
     ptbscreen,
+    ptbsound,
     mosaicview,
     projview,
     mapimagewidget,
@@ -86,7 +87,6 @@ if config.USE_MRPULSE:
 
 # Enable antialiasing for prettier plots
 pg.setConfigOptions(antialias=True)
-
 
 class ImageViewMode(enum.IntEnum):
     mosaic = 0
@@ -144,16 +144,16 @@ class OpenNFT(QWidget):
         loadUi(utils.get_ui_file('opennft.ui'), self)
 
         self.setWindowIcon(QIcon(str(config.OpenNFT_ICON)))
-        self.displayEvent = multiprocessing.Event()
-        self.endDisplayEvent = multiprocessing.Event()
+        self.feedbackEvent = multiprocessing.Event()
+        self.endFeedbackEvent = multiprocessing.Event()
 
-        self.displayThread = None
-        self.stopDisplayThread = True
+        self.feedbackThread = None
+        self.stopFeedbackThread = True
 
         self.pbMoreParameters.setChecked(False)
 
-        pg.setConfigOption('foreground',
-                           self.palette().color(QPalette.Foreground))
+        pg.setConfigOption('foreground', 'b')
+        pg.setConfigOption('background', 'w')
         # self.plotBgColor = (210, 210, 210)
         self.plotBgColor = (255, 255, 255)
 
@@ -191,8 +191,8 @@ class OpenNFT(QWidget):
         self.isMainLoopEntered = False
         self.typicalFileSize = 0
         self.mainLoopLock = threading.Lock()
-        self.displayData = None
-        self.displayQueue = queue.Queue()
+        self.feedbackData = None
+        self.feedbackQueue = queue.Queue()
 
         if config.USE_POLLING_FS_OBSERVER:
             self.fs_observer = PollingObserver()
@@ -230,8 +230,10 @@ class OpenNFT(QWidget):
             self.mlPtbDcmHelper = matlab_helpers[config.PTB_MATLAB_NAME]
         self.mlModelHelper = matlab_helpers.get(config.MODEL_HELPER_MATLAB_NAME)
 
-        if config.USE_PTB_HELPER:
-            self.ptbScreen = ptbscreen.PtbScreen(self.mlPtbDcmHelper, self.recorder, self.endDisplayEvent)
+        if config.USE_PTB_SCREEN:
+            self.ptbScreen = ptbscreen.PtbScreen(self.mlPtbDcmHelper, self.recorder, self.endFeedbackEvent)
+        if config.USE_PTB_SOUND:
+            self.ptbSound = ptbsound.PtbSound(self.mlPtbDcmHelper, self.recorder, self.endFeedbackEvent)
 
         self.P = {}
         self.mainLoopData = {}
@@ -465,8 +467,8 @@ class OpenNFT(QWidget):
 
         self.btnChooseShamFile.clicked.connect(lambda: self.onChooseFile('ShamFile', self.leShamFile))
 
-        self.cbUsePTB.stateChanged.connect(self.onChangePTB)
-        self.onChangePTB()
+        self.cbUsePTBScreen.stateChanged.connect(self.onChangePTBScreen)
+        self.onChangePTBScreen()
 
         ipv4_regexp = QRegExp(r"[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}")
 
@@ -558,12 +560,12 @@ class OpenNFT(QWidget):
         self.cbgetMAT.setEnabled(self.cbDataType.currentText() == 'DICOM')
 
     # --------------------------------------------------------------------------
-    def onChangePTB(self):
-        self.cbScreenId.setEnabled(self.cbUsePTB.isChecked())
-        self.cbDisplayFeedbackFullscreen.setEnabled(self.cbUsePTB.isChecked())
-        self.sbTargANG.setEnabled(self.cbUsePTB.isChecked())
-        self.sbTargRAD.setEnabled(self.cbUsePTB.isChecked())
-        self.sbTargDIAM.setEnabled(self.cbUsePTB.isChecked())
+    def onChangePTBScreen(self):
+        self.cbScreenId.setEnabled(self.cbUsePTBScreen.isChecked())
+        self.cbDisplayFeedbackFullscreen.setEnabled(self.cbUsePTBScreen.isChecked())
+        self.sbTargANG.setEnabled(self.cbUsePTBScreen.isChecked())
+        self.sbTargRAD.setEnabled(self.cbUsePTBScreen.isChecked())
+        self.sbTargDIAM.setEnabled(self.cbUsePTBScreen.isChecked())
 
     # --------------------------------------------------------------------------
     def onChangeUseTCPData(self):
@@ -626,21 +628,25 @@ class OpenNFT(QWidget):
             self.P = self.eng.workspace['P']
 
     # --------------------------------------------------------------------------
-    def displayScreen(self):
-        self.displayQueue.put(self.displayData)
-        self.displayEvent.set()
+    def presentFeedback(self):
+        self.feedbackQueue.put(self.feedbackData)
+        self.feedbackEvent.set()
 
     # --------------------------------------------------------------------------
-    def onEventDisplay(self):
+    def onEventFeedback(self):
         while True:
-            self.displayEvent.wait()
-            if self.stopDisplayThread:
+            self.feedbackEvent.wait()
+            if self.stopFeedbackThread:
                 return
-            # logger.info('{}', self.displayStack[0]['iteration'])
-            # logger.info('{}', self.displayStack[0]['displayStage'])
-            self.ptbScreen.displayLock.acquire()
-            self.ptbScreen.display(self.displayQueue)
-            self.displayEvent.clear()
+            
+            if config.USE_PTB_SCREEN:
+                self.ptbScreen.displayLock.acquire()
+                self.ptbScreen.display(self.feedbackQueue)
+            elif config.USE_PTB_SOUND:
+                self.ptbSound.displayLock.acquire()
+                self.ptbSound.playSound(self.feedbackQueue)            
+                
+            self.feedbackEvent.clear()
 
     # --------------------------------------------------------------------------
     def checkFileIsReady(self, path, fname):
@@ -695,27 +701,27 @@ class OpenNFT(QWidget):
 
             self.eng.mainLoopEntry(self.iteration, nargout=0)
 
-            self.displayData = self.eng.initDispalyData(self.iteration)
+            self.feedbackData = self.eng.initDispalyData(self.iteration)
 
             # t6, display instruction prior to data acquisition for current iteration
             self.recorder.recordEvent(erd.Times.t6, self.iteration)
 
             # display instruction prior to data acquisition for current iteration
             if self.P['Type'] in ['PSC', 'Corr']:
-                if config.USE_PTB:
+                if config.USE_PTB_SCREEN:
                     logger.info('instruction + {}', self.iteration)
-                    self.displayScreen()
+                    self.presentFeedback()
 
                 if self.iteration > self.P['nrSkipVol'] and config.UDP_SEND_CONDITION:
                     self.udpSender.send_data(
                         self.udpCondForContrast[int(self.eng.evalin('base', 'mainLoopData.condition')) - 1])
 
             elif self.P['Type'] == 'DCM':
-                if not self.isCalculateDcm and config.USE_PTB:
-                    self.displayScreen()
+                if not self.isCalculateDcm and config.USE_PTB_SCREEN:
+                    self.presentFeedback()
 
             elif self.P['Type'] == 'SVM':
-                if self.displayData and config.USE_UDP_FEEDBACK:
+                if self.feedbackData and config.USE_UDP_FEEDBACK:
                     logger.info('Sending by UDP - instrValue = ')  # + str(self.displayData['instrValue'])
                     # self.udpSender.send_data(self.displayData['instrValue'])
 
@@ -895,7 +901,7 @@ class OpenNFT(QWidget):
                     logger.info('DCM calculated')
 
                     # feedback estimation
-                    self.displayData = self.eng.nfbCalc(self.iteration, self.displayData, dcmTagLE, dcmOppLE, True,
+                    self.feedbackData = self.eng.nfbCalc(self.iteration, self.feedbackData, dcmTagLE, dcmOppLE, True,
                                                         nargout=1)
 
                     # t5
@@ -907,12 +913,12 @@ class OpenNFT(QWidget):
 
                 if self.isCalculateDcm:
                     # display blank screen in ptb helper before calculate DCM
-                    if config.USE_PTB:
-                        self.displayData['displayBlankScreen'] = 1
-                        self.displayScreen()
+                    if config.USE_PTB_SCREEN:
+                        self.feedbackData['displayBlankScreen'] = 1
+                        self.presentFeedback()
                         QApplication.processEvents()
-                        self.endDisplayEvent.wait()
-                        self.endDisplayEvent.clear()
+                        self.endFeedbackEvent.wait()
+                        self.endFeedbackEvent.clear()
 
                     # Parallel DCM computing on two matlab engines
                     # t11 first DCM model computation started
@@ -938,51 +944,56 @@ class OpenNFT(QWidget):
 
         elif self.P['Type'] == 'SVM':
             # feedback estimation
-            self.displayData = self.eng.nfbCalc(self.iteration, self.displayData, nargout=1)
+            self.feedbackData = self.eng.nfbCalc(self.iteration, self.feedbackData, nargout=1)
 
             # t5
             self.recorder.recordEvent(erd.Times.t5, self.iteration, time.time())
 
         elif self.P['Type'] in ['PSC', 'Corr']:
-            self.displayData = self.eng.nfbCalc(self.iteration, self.displayData, nargout=1)
+            self.feedbackData = self.eng.nfbCalc(self.iteration, self.feedbackData, nargout=1)
 
             # t5
             self.recorder.recordEvent(erd.Times.t5, self.iteration, time.time())
 
             if self.P['Prot'] != 'Inter':
-                if config.USE_PTB:
-                    if self.displayData:
-                        if self.P['Prot'] == 'ContTask':
-                            # Here task condition is evaluated: if condition is 3 (task) and the current
-                            # iteration corresponds with the onset of a task block (kept in TaskFirstVol)
-                            # taskseq is set to one. While set to 1, Display in ptbScreen.py
-                            # will use the taskse flag to call the ptbTask function.
-                            # cond = self.eng.evalin('base', 'mainLoopData.displayData.condition')
-                            cond = self.displayData['condition']
-                            if cond == 3 and int(self.P['TaskFirstVol'][0][self.iteration - 1]) == 1:
-                                self.displayData['taskseq'] = 1
-                                self.displayScreen()
-                                QApplication.processEvents()
-                                self.endDisplayEvent.wait()
-                                self.endDisplayEvent.clear()
+                if self.feedbackData:
+                    if config.USE_PTB_SCREEN:
+                            if self.P['Prot'] == 'ContTask':
+                                # Here task condition is evaluated: if condition is 3 (task) and the current
+                                # iteration corresponds with the onset of a task block (kept in TaskFirstVol)
+                                # taskseq is set to one. While set to 1, Display in ptbScreen.py
+                                # will use the taskse flag to call the ptbTask function.
+                                # cond = self.eng.evalin('base', 'mainLoopData.displayData.condition')
+                                cond = self.feedbackData['condition']
+                                if cond == 3 and int(self.P['TaskFirstVol'][0][self.iteration - 1]) == 1:
+                                    self.feedbackData['taskseq'] = 1
+                                    self.presentFeedback()
+                                    QApplication.processEvents()
+                                    self.endFeedbackEvent.wait()
+                                    self.endFeedbackEvent.clear()
+                                else:
+                                    self.feedbackData['taskseq'] = 0
+                                    self.feedbackData['displayStage'] = 'feedback'
+                                    self.presentFeedback()
                             else:
-                                self.displayData['taskseq'] = 0
-                                self.displayData['displayStage'] = 'feedback'
-                                self.displayScreen()
-                        else:
-                            self.displayData['taskseq'] = 0
-                            self.displayData['displayStage'] = 'feedback'
-                            self.displayScreen()
+                                self.feedbackData['taskseq'] = 0
+                                self.feedbackData['displayStage'] = 'feedback'
+                                self.presentFeedback()
 
-        if self.displayData:
+                    elif config.USE_PTB_SOUND:
+                        self.feedbackData['displayStage'] = 'feedback'
+                        self.presentFeedback()
+                
+
+        if self.feedbackData:
             if config.USE_SHAM:
-                self.displayData['dispValue'] = self.shamData[self.iteration - self.P['nrSkipVol'] - 1]
+                self.feedbackData['dispValue'] = self.shamData[self.iteration - self.P['nrSkipVol'] - 1]
 
             if config.USE_UDP_FEEDBACK:
-                logger.info('Sending by UDP - dispValue = {}', self.displayData['dispValue'])
-                self.udpSender.send_data(self.displayData['dispValue'])
+                logger.info('Sending by UDP - dispValue = {}', self.feedbackData['dispValue'])
+                self.udpSender.send_data(self.feedbackData['dispValue'])
 
-            self.displaySamples.append(self.displayData['dispValue'])
+            self.feedbackSamples.append(self.feedbackData['dispValue'])
 
         # main logic end
 
@@ -1336,7 +1347,7 @@ class OpenNFT(QWidget):
 
         self.isMainLoopEntered = False
         self.typicalFileSize = 0
-        self.displayQueue = queue.Queue()
+        self.feedbackQueue = queue.Queue()
         self.resetDone = True
 
     # --------------------------------------------------------------------------
@@ -1368,7 +1379,7 @@ class OpenNFT(QWidget):
 
             self.eng.workspace['P'] = self.P
             self.previousIterStartTime = 0
-            self.displaySamples = []
+            self.feedbackSamples = []
 
             with utils.timeit("  Load protocol data:"):
                 self.loadJsonProtocol()
@@ -1424,44 +1435,63 @@ class OpenNFT(QWidget):
                 elif fext == '.mat':  # expect "mainLoopData"
                     NFBdata = loadmat(self.P['ShamFile'])['dispValues']
 
-                dispValues = list(NFBdata.flatten())
-                if len(dispValues) != self.P['NrOfVolumes'] - self.P['nrSkipVol']:
+                feedbackValues = list(NFBdata.flatten())
+                if len(feedbackValues) != self.P['NrOfVolumes'] - self.P['nrSkipVol']:
                     logger.error(
-                        "Number of display values ({:d}) in {} does not correspond to number of volumes ({:d} - {:d} skipped).\n SELECT ANOTHER SHAM FILE".format(
-                            len(dispValues), self.P['ShamFile'], self.P['NrOfVolumes'], self.P['nrSkipVol']))
+                        "Number of feedback values ({:d}) in {} does not correspond to number of volumes ({:d} - {:d} skipped).\n SELECT ANOTHER SHAM FILE".format(
+                            len(feedbackValues), self.P['ShamFile'], self.P['NrOfVolumes'], self.P['nrSkipVol']))
                     return
-                self.shamData = [float(v) for v in dispValues]
+                self.shamData = [float(v) for v in feedbackValues]
                 logger.info("Sham data has been loaded")
 
             if config.USE_PTB:
-                self.stopDisplayThread = False
-                self.displayThread = threading.Thread(target=self.onEventDisplay)
-                self.displayThread.start()
+                self.stopFeedbackThread = False
+                self.feedbackThread = threading.Thread(target=self.onEventFeedback)
+                self.feedbackThread.start()
 
-                with utils.timeit("  Preparation of PTB Screen:"):
-                    sid = self.cbScreenId.currentIndex() + 1
-                    path = Path(self.P['nfbDataFolder'])
-                    eventRecordsPath = path / ('TimeVectors_display_' + str(self.P['NFRunNr']).zfill(2) + '.txt')
+                if config.USE_PTB_SCREEN:
+                    with utils.timeit("  Preparation of PTB Screen:"):
+                        sid = self.cbScreenId.currentIndex() + 1
+                        path = Path(self.P['nfbDataFolder'])
+                        eventRecordsPath = path / ('TimeVectors_display_' + str(self.P['NFRunNr']).zfill(2) + '.txt')
 
-                    ptbP = {}
-                    ptbP['eventRecordsPath'] = str(eventRecordsPath)
-                    ptbP['TargDIAM'] = self.P['TargDIAM']
-                    ptbP['TargRAD'] = self.P['TargRAD']
-                    ptbP['TargANG'] = self.P['TargANG']
-                    ptbP['NFRunNr'] = self.P['NFRunNr']
-                    ptbP['Type'] = self.P['Type']
-                    ptbP['WorkFolder'] = self.P['WorkFolder']
-                    ptbP['DisplayFeedbackFullscreen'] = self.P['DisplayFeedbackFullscreen']
-                    ptbP['Prot'] = self.P['Prot']
-                    ptbP['FeedbackValDec'] = self.P['FeedbackValDec']
-                    if self.P['Prot'] == 'ContTask':
-                        ptbP['TaskFolder'] = self.P['TaskFolder']
+                        ptbP = {}
+                        ptbP['eventRecordsPath'] = str(eventRecordsPath)
+                        ptbP['TargDIAM'] = self.P['TargDIAM']
+                        ptbP['TargRAD'] = self.P['TargRAD']
+                        ptbP['TargANG'] = self.P['TargANG']
+                        ptbP['NFRunNr'] = self.P['NFRunNr']
+                        ptbP['Type'] = self.P['Type']
+                        ptbP['WorkFolder'] = self.P['WorkFolder']
+                        ptbP['DisplayFeedbackFullscreen'] = self.P['DisplayFeedbackFullscreen']
+                        ptbP['Prot'] = self.P['Prot']
+                        ptbP['FeedbackValDec'] = self.P['FeedbackValDec']
+                        if self.P['Prot'] == 'ContTask':
+                            ptbP['TaskFolder'] = self.P['TaskFolder']
 
-                    self.ptbScreen.initialize(
-                        sid, self.P['WorkFolder'], self.P['Prot'], ptbP)
+                        self.ptbScreen.initialize(
+                            sid, self.P['WorkFolder'], self.P['Prot'], ptbP)
+
+                if config.USE_PTB_SOUND:
+                    with utils.timeit("  Preparation of PTB Sound:"):
+                        sid = self.cbScreenId.currentIndex() + 1
+                        path = Path(self.P['nfbDataFolder'])
+                        eventRecordsPath = path / ('TimeVectors_display_' + str(self.P['NFRunNr']).zfill(2) + '.txt')
+
+                        ptbP = {}
+                        ptbP['eventRecordsPath'] = str(eventRecordsPath)
+                        ptbP['NFRunNr'] = self.P['NFRunNr']
+                        ptbP['Type'] = self.P['Type']
+                        ptbP['WorkFolder'] = self.P['WorkFolder']
+                        ptbP['Prot'] = self.P['Prot']
+                        ptbP['FeedbackValDec'] = self.P['FeedbackValDec']
+                        if self.P['Prot'] == 'ContTask':
+                            ptbP['TaskFolder'] = self.P['TaskFolder']
+
+                        self.ptbSound.initialize(self.P['WorkFolder'], self.P['Prot'], ptbP)
 
             if config.USE_MRPULSE:
-                (self.pulseProc, self.mrPulses) = mrpulse.start(self.P['NrOfVolumes'], self.displayEvent)
+                (self.pulseProc, self.mrPulses) = mrpulse.start(self.P['NrOfVolumes'], self.feedbackEvent)
 
             self.recorder.initialize(self.P['NrOfVolumes'])
             self.eng.nfbInitReward(nargout=0)
@@ -1526,7 +1556,7 @@ class OpenNFT(QWidget):
                 self.P['NrROIs'] = 1
             self.eng.workspace['P'] = self.P
             self.previousIterStartTime = 0
-            self.displaySamples = []
+            self.feedbackSamples = []
 
             self.recorder.initialize(self.P['NrOfVolumes'])
 
@@ -1822,13 +1852,17 @@ class OpenNFT(QWidget):
         self.call_timer.stop()
 
         if hasattr(config, 'USE_PTB') and config.USE_PTB:
-            self.ptbScreen.deinitialize()
-            if not self.stopDisplayThread:
-                self.displayEvent.set()
-                self.stopDisplayThread = True
-                self.displayThread.join()
-                self.stopDisplayThread = False
-                self.displayEvent.clear()
+            if config.USE_PTB_SCREEN:
+                self.ptbScreen.deinitialize()
+            if config.USE_PTB_SOUND:
+                self.ptbSound.deinitialize()
+
+            if not self.stopFeedbackThread:
+                self.feedbackEvent.set()
+                self.stopFeedbackThread = True
+                self.feedbackThread.join()
+                self.stopFeedbackThread = False
+                self.feedbackEvent.clear()
 
         if config.USE_SLEEP_IN_STOP:
             time.sleep(2)
@@ -2290,10 +2324,14 @@ class OpenNFT(QWidget):
 
             self.leShamFile.setText(self.settings.value('ShamFile', ''))
 
-            self.cbUsePTB.setChecked(str(self.settings.value('UsePTB', 'false')).lower() == 'true')
+            self.cbUsePTBScreen.setChecked(str(self.settings.value('UsePTBScreen', 'false')).lower() == 'true')
+            self.cbUsePTBSound.setChecked(str(self.settings.value('UsePTBSound', 'false')).lower() == 'true')
+
             if not config.USE_PTB_HELPER:
-                self.cbUsePTB.setChecked(False)
-                self.cbUsePTB.setEnabled(False)
+                self.cbUsePTBScreen.setChecked(False)
+                self.cbUsePTBScreen.setEnabled(False)
+                self.cbUsePTBSound.setChecked(False)
+                self.cbUsePTBSound.setEnabled(False)
 
             self.cbScreenId.setCurrentIndex(int(self.settings.value('DisplayFeedbackScreenID', 0)))
             self.cbDisplayFeedbackFullscreen.setChecked(
@@ -2610,12 +2648,14 @@ class OpenNFT(QWidget):
 
         self.settings.setValue('ShamFile', self.P['ShamFile'])
 
-        self.settings.setValue('UsePTB', self.cbUsePTB.isChecked())
+        self.settings.setValue('UsePTBScreen', self.cbUsePTBScreen.isChecked())
         self.settings.setValue('DisplayFeedbackScreenID', self.cbScreenId.currentIndex())
         self.settings.setValue('DisplayFeedbackFullscreen', self.cbDisplayFeedbackFullscreen.isChecked())
         self.settings.setValue('TargANG', self.P['TargANG'])
         self.settings.setValue('TargRAD', self.P['TargRAD'])
         self.settings.setValue('TargDIAM', self.P['TargDIAM'])
+
+        self.settings.setValue('UsePTBSound', self.cbUsePTBSound.isChecked())
 
         self.settings.setValue('UseUDPFeedback', self.cbUseUDPFeedback.isChecked())
         self.settings.setValue('UDPFeedbackIP', self.leUDPFeedbackIP.text())
@@ -2640,7 +2680,15 @@ class OpenNFT(QWidget):
 
         config.USE_SHAM = bool(len(self.P['ShamFile']))
 
-        config.USE_PTB = self.cbUsePTB.isChecked()
+        config.USE_PTB_SCREEN = self.cbUsePTBScreen.isChecked()
+        config.USE_PTB_SOUND = self.cbUsePTBSound.isChecked()
+        config.USE_PTB = self.cbUsePTBScreen.isChecked() or self.cbUsePTBSound.isChecked()
+
+        if config.USE_PTB_SCREEN:
+            self.P['FeedbackModality'] = 'Screen'
+        elif config.USE_PTB_SOUND:
+            self.P['FeedbackModality'] = 'Sound'
+
 
         config.USE_UDP_FEEDBACK = self.cbUseUDPFeedback.isChecked()
         if config.USE_UDP_FEEDBACK:
@@ -2767,7 +2815,7 @@ class OpenNFT(QWidget):
         dataNorm = np.array(self.outputSamples['scalProcTimeSeries'], ndmin=2)[self.selectedRoi, :]
         if self.P['PlotFeedback']:
             dataNorm = np.concatenate(
-                (dataNorm, np.array([self.displaySamples]) / self.P['MaxFeedbackVal'])
+                (dataNorm, np.array([self.feedbackSamples]) / self.P['MaxFeedbackVal'])
             )
 
         self.drawGivenRoiPlot(init, self.rawRoiPlot, dataRaw)
@@ -2970,13 +3018,13 @@ class OpenNFT(QWidget):
         mgr = multiprocessing.Manager()
         # ns = mgr.Namespace()
         # ns.ptb = self.ptbScreen
-        self.displayData = {'feedbackType': 'DCM', 'condition': 2.0, 'dispValue': 0.0, 'Reward': ''}
+        self.feedbackData = {'feedbackType': 'DCM', 'condition': 2.0, 'dispValue': 0.0, 'Reward': ''}
         # self.ptbScreen.display(displayData)
 
         self.e1 = multiprocessing.Event()
         self.e2 = multiprocessing.Event()
 
-        self.t1 = threading.Thread(target=self.onEventDisplay)  # , args=(evnt,)
+        self.t1 = threading.Thread(target=self.onEventFeedback)  # , args=(evnt,)
         self.t1.start()
 
         # self.e1.set()

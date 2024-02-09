@@ -71,11 +71,12 @@ if flags.isPSC && (strcmp(P.Prot, 'Cont') || strcmp(P.Prot, 'ContTask'))
             end
         end
 
-        % For each ROI calculate the median in the previous baseline block and the current volume which is in a NF block
+        % For each ROI calculate the median in the previous baseline block and 
+        % get the activity of the current volume which is in the current NF block
         for indRoi = 1:loopNrROIs
             mBas = median(mainLoopData.scalProcTimeSeries(indRoi,i_blockBAS));
             mCond = mainLoopData.scalProcTimeSeries(indRoi,indVolNorm);
-            norm_percValues(indRoi) = mCond - mBas;
+            norm_percValues(indRoi) = mCond - mBas; % compares the current activity with the activity off the baseline
         end
 
         % compute average %SC feedback value
@@ -90,6 +91,9 @@ if flags.isPSC && (strcmp(P.Prot, 'Cont') || strcmp(P.Prot, 'ContTask'))
         elseif P.NegFeedback && dispValue < P.MinFeedbackVal
              dispValue = P.MinFeedbackVal;
         end
+        if dispValue < P.MinFeedbackVal
+             dispValue = P.MinFeedbackVal;
+        end
         if dispValue > P.MaxFeedbackVal
             dispValue = P.MaxFeedbackVal;
         end
@@ -98,8 +102,15 @@ if flags.isPSC && (strcmp(P.Prot, 'Cont') || strcmp(P.Prot, 'ContTask'))
         mainLoopData.dispValues(indVolNorm) = dispValue;
         mainLoopData.dispValue = dispValue;
     else
-        tmp_fbVal = 0;
-        mainLoopData.dispValue = 0;
+        % We are in a condition other than nf regulation, set the dispValue to 1 which is the default 
+        % and is also used for baseline
+        if strcmp(P.FeedbackModality, 'Sound')
+            tmp_fbVal = 1;
+            mainLoopData.dispValue = 1;
+        else
+            tmp_fbVal = P.MinFeedbackVal;
+            mainLoopData.dispValue = P.MinFeedbackVal;                                    
+        end
     end
 
     mainLoopData.vectNFBs(indVolNorm) = tmp_fbVal;
