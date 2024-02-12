@@ -40,7 +40,8 @@ if flags.isSVM
     WEIGHTs = evalin('base', 'WEIGHTs');
 end
 
-% normalized volume(scan) index
+% normalized volume(scan) index. This is just the real index of the volume minus 
+% the number of skip volumes.
 indVolNorm = mainLoopData.indVolNorm;
 % handle type differences between Python/Matlab
 indVolNorm = double(indVolNorm);

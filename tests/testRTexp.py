@@ -13,8 +13,10 @@ Written by Artem Nikonorov, Yury Koush
 import shutil
 from time import sleep
 from pathlib import Path
+import sys
+import os
 
-delete_files = True
+delete_files = False
 
 mask = "001_000008_000"
 # fns = [1, 2, 3, 4, 6, 5, 7, 8]
@@ -22,30 +24,23 @@ fns = None
 
 testCase = 'SVM'
 
-if testCase == 'PSC':
-    srcpath = 'C:/_RT/rtData/NF_PSC/NF_Run_1_src'
-    dstpath = 'C:/_RT/rtData/NF_PSC/NF_Run_1'
-    pause_in_sec = 1
+pause_in_sec = 1.5
 
-elif testCase == 'SVM':
-    srcpath = 'C:/_RT/rtData/NF_SVM/NF_Run_1_src'
-    dstpath = 'C:/_RT/rtData/NF_SVM/NF_Run_1'
-    pause_in_sec = 1
+if len(sys.argv) != 3:
+    print("Usage: python script.py <srcpath> <dstpath>")
+    exit()
 
-elif testCase == 'DCM':
-    srcpath = 'C:/_RT/rtData/NF_DCM/NF_Run_1_src'
-    dstpath = 'C:/_RT/rtData/NF_DCM/NF_Run_1'
-    pause_in_sec = 1
+srcpath = sys.argv[1]
+dstpath = sys.argv[2]
 
-elif testCase == 'REST':
-    srcpath = 'C:/_RT/rtData/rtQA_REST/RS_Run_1_src'
-    dstpath = 'C:/_RT/rtData/rtQA_REST/RS_Run_1'
-    pause_in_sec = 1.97
+# Check if provided paths are valid directories
+if not os.path.isdir(srcpath):
+    print(f"The path '{srcpath}' is not a valid directory.")
+    exit()
 
-elif testCase == 'TASK':
-    srcpath = 'C:/_RT/rtData/rtQA_TASK/TASK_Run_1_src'
-    dstpath = 'C:/_RT/rtData/rtQA_TASK/TASK_Run_1'
-    pause_in_sec = 1.97
+if not os.path.isdir(dstpath):
+    print(f"The path '{dstpath}' is not a valid directory.")
+    exit()
 
 if delete_files:
     files = Path(dstpath)

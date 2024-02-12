@@ -16,8 +16,8 @@ function ptbSoundPlay(displayData)
     defaultFields = {'', 0, 0, '', '', '', 0};
     eval(varsFromStruct(displayData, fieldNames, defaultFields))
 
-    fprintf('dispValue: %d\n', dispValue);
     dispValue = round(dispValue);
+    fprintf('dispValue: %d\n', dispValue);
     
     % If the playback is not active or is finished or has not started yet, create a new schedule
     % http://psychtoolbox.org/docs/PsychPortAudio-GetStatus
@@ -36,9 +36,13 @@ function ptbSoundPlay(displayData)
                     % http://psychtoolbox.org/docs/PsychPortAudio-AddToSchedule
                     % [success, freeslots] = PsychPortAudio(‘AddToSchedule’, pahandle [, bufferHandle=0][, repetitions=1][, startSample=0][, endSample=max][, UnitIsSeconds=0][, specialFlags=0]);
                     PsychPortAudio('AddToSchedule', P.nf_sound.pahandle, P.nf_sound.feedback_buffers(1), 1);
+                    fprintf('Added baseline sound.\n')
                 case 2 % Regualtion
-                    fprintf('In regulation block with value %d\n', dispValue)
+                    fprintf('Added regulation sound at %d.\n', dispValue)
                     PsychPortAudio('AddToSchedule', P.nf_sound.pahandle, P.nf_sound.feedback_buffers(dispValue), 1);
+                case 3 % Cue Regulation
+                    PsychPortAudio('AddToSchedule', P.nf_sound.pahandle, P.nf_sound.cue_nf_start, 1);
+                    fprintf('Added cue sound.\n');
             end
         
         %% Continuous PSC with task block

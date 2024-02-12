@@ -21,6 +21,7 @@ if ~P.isAutoRTQA
     NrOfVolumes = P.NrOfVolumes;
     nrSkipVol = P.nrSkipVol;
 
+    % The OnOffsets in the json file must be the index of the volume - skipvol
     prt = loadjson(jsonFile);
 
     % -- remove dcmdef field -- %

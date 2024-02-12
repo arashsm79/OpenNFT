@@ -696,6 +696,7 @@ class OpenNFT(QWidget):
         self.isMainLoopEntered = True
         self.mainLoopLock.release()
 
+        # iteration is also the index of the acquired volume.
         if self.preiteration < self.iteration:
             # this code is executed before file is acquired
 
@@ -1060,8 +1061,8 @@ class OpenNFT(QWidget):
         self.recorder.recordEventDuration(erd.Times.d0, self.iteration, elapsedTime)
         self.files_processed.append(fname)
 
-        self.leElapsedTime.setText('{:.4f}'.format(elapsedTime))
-        self.leCurrentVolume.setText('%d' % self.iteration)
+        self.leElapsedTime.setText(' {:.4f} '.format(elapsedTime))
+        self.leCurrentVolume.setText(' %d ' % self.iteration)
 
         # logger.info('**********  {}', self.recorder.files[-1])
         logger.info('Elapsed time: {:.4f} s', elapsedTime)

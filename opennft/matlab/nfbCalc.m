@@ -41,8 +41,95 @@ end
 % Calculate haemodynamic delay (6 s) in volumes
 nVolDelay = ceil(6000/P.TR);
 
+%% Continuous PSC NF Dynamic Functional Connectivity
+if P.isDFC
+    blockNF = mainLoopData.blockNF;
+    firstNF = mainLoopData.firstNF;
+
+    % NF estimation condition
+    if condition == 2
+
+        % Check if we are at the beginning of an NF regulation block
+        % The condition index for Regulation block is 2
+        k = cellfun(@(x) x(1) == indVolNorm, P.ProtCond{ 2 });
+        if any(k) % If we are at the beginning of any of the regulation blocks
+            % Update the value of blockNF to indicate the current NF block value that we are in
+            blockNF = find(k);
+            firstNF = indVolNorm;
+        end
+
+        % Get the baseline block immediately preceding the current NF regulation block
+        % iblockBAS is a list of volume indexes in that baseline block.
+        i_blockBAS = [];
+        if blockNF<2 % If we are in the first NF block, get the first baseline block
+            % according to json protocol
+            % index for Baseline condition is 1
+            i_blockBAS = (P.ProtCond{ 1 }{blockNF}(1)+nVolDelay):(P.ProtCond{ 1 }{blockNF}(end));
+        else % otherwise get the baseline block before the current nf block
+            for iBas = 1:blockNF
+                i_blockBAS = (P.ProtCond{ 1 }{iBas}(1)+nVolDelay):(P.ProtCond{ 1 }{iBas}(end));
+            end
+        end
+
+        % Calculate the FC between the two regions in the previous baseline block
+        rhoBas = corrcoef(mainLoopData.scalProcTimeSeries(:,i_blockBAS)'); rhoBas = rhoBas(1,2);
+
+        % NF condition is at index 2 in protcond. Get the onoffset for the corresponding nf block 
+        % and create a sequence from the start of onoffset to the end.
+        nf_block_start = P.ProtCond{ 2 }{blockNF}(1)+nVolDelay;
+        dfc_window_end = indVolNorm;
+        fprintf("index vol norm: %d, nf block start: %d, window length: %d\n", indVolNorm, nf_block_start, P.dfc_sliding_window_length);
+
+        if indVolNorm - P.dfc_sliding_window_length > nf_block_start
+            dfc_window_start = indVolNorm - P.dfc_sliding_window_length;
+            i_blockNF = dfc_window_start:dfc_window_end;
+            rhoCond = corrcoef(mainLoopData.scalProcTimeSeries(:,i_blockNF)'); rhoCond = rhoCond(1,2);
+            % assign the same value to all of the ROIs since the correlation between them is the same
+            norm_percValues(1:loopNrROIs) = rhoCond - rhoBas;
+            fprintf("dFC window = %d : %d, with coeff: %f\n", dfc_window_start, dfc_window_end, rhoCond);
+        else
+            % We are not deep enough into the NF block so accomodate a window of the given size
+            norm_percValues(1:loopNrROIs) = 0;
+        end
+
+        % compute average %SC feedback value
+        % P.RoiAnatOperation is a piece of matlab code defined in the .ini file of the experiment
+        % It could for example be a string that contains 'mean(norm_percValues)'
+        tmp_fbVal = eval(P.RoiAnatOperation);
+        dispValue = round(P.MaxFeedbackVal*tmp_fbVal, P.FeedbackValDec);
+
+        % [0...P.MaxFeedbackVal], for Display
+        if ~P.NegFeedback && dispValue < 0
+            dispValue = 0;
+        elseif P.NegFeedback && dispValue < P.MinFeedbackVal
+             dispValue = P.MinFeedbackVal;
+        end
+        if dispValue < P.MinFeedbackVal
+             dispValue = P.MinFeedbackVal;
+        end
+        if dispValue > P.MaxFeedbackVal
+            dispValue = P.MaxFeedbackVal;
+        end
+
+        mainLoopData.norm_percValues(indVolNorm,:) = norm_percValues;
+        mainLoopData.dispValues(indVolNorm) = dispValue;
+        mainLoopData.dispValue = dispValue;
+    else
+        % We are in a condition other than nf regulation, set the dispValue to its minimum value
+        tmp_fbVal = P.MinFeedbackVal;
+        mainLoopData.dispValue = P.MinFeedbackVal;                                    
+    end
+
+    mainLoopData.vectNFBs(indVolNorm) = tmp_fbVal;
+    mainLoopData.blockNF = blockNF;
+    mainLoopData.firstNF = firstNF;
+    mainLoopData.Reward = '';
+
+    displayData.Reward = mainLoopData.Reward;
+    displayData.dispValue = mainLoopData.dispValue;
+
 %% Continuous PSC NF
-if flags.isPSC && (strcmp(P.Prot, 'Cont') || strcmp(P.Prot, 'ContTask'))
+elseif flags.isPSC && (strcmp(P.Prot, 'Cont') || strcmp(P.Prot, 'ContTask'))
     blockNF = mainLoopData.blockNF;
     firstNF = mainLoopData.firstNF;
 
@@ -102,15 +189,9 @@ if flags.isPSC && (strcmp(P.Prot, 'Cont') || strcmp(P.Prot, 'ContTask'))
         mainLoopData.dispValues(indVolNorm) = dispValue;
         mainLoopData.dispValue = dispValue;
     else
-        % We are in a condition other than nf regulation, set the dispValue to 1 which is the default 
-        % and is also used for baseline
-        if strcmp(P.FeedbackModality, 'Sound')
-            tmp_fbVal = 1;
-            mainLoopData.dispValue = 1;
-        else
-            tmp_fbVal = P.MinFeedbackVal;
-            mainLoopData.dispValue = P.MinFeedbackVal;                                    
-        end
+        % We are in a condition other than nf regulation, set the dispValue to its minimum value
+        tmp_fbVal = P.MinFeedbackVal;
+        mainLoopData.dispValue = P.MinFeedbackVal;                                    
     end
 
     mainLoopData.vectNFBs(indVolNorm) = tmp_fbVal;
@@ -120,18 +201,9 @@ if flags.isPSC && (strcmp(P.Prot, 'Cont') || strcmp(P.Prot, 'ContTask'))
 
     displayData.Reward = mainLoopData.Reward;
     displayData.dispValue = mainLoopData.dispValue;
-% else
-%     tmp_fbVal = 0;
-%     mainLoopData.dispValue = 0;
-%     mainLoopData.vectNFBs(indVolNorm) = tmp_fbVal;
-%     mainLoopData.Reward = '';
-%
-%     displayData.Reward = mainLoopData.Reward;
-%     displayData.dispValue = mainLoopData.dispValue;
-end
 
 %% Intermittent PSC NF
-if  strcmp(P.Prot, 'Inter') && (flags.isPSC || flags.isCorr)
+elseif  strcmp(P.Prot, 'Inter') && (flags.isPSC || flags.isCorr)
     blockNF = mainLoopData.blockNF;
     firstNF = mainLoopData.firstNF;
     dispValue = mainLoopData.dispValue;
@@ -253,10 +325,9 @@ if  strcmp(P.Prot, 'Inter') && (flags.isPSC || flags.isCorr)
 
     displayData.Reward = mainLoopData.Reward;
     displayData.dispValue = mainLoopData.dispValue;
-end
 
 %% trial-based DCM NF
-if flags.isDCM
+elseif flags.isDCM
     indNFTrial  = P.indNFTrial;
 
     %isDcmCalculated = ~isempty(find(P.endDCMblock==indVol-P.nrSkipVol,1));
@@ -294,10 +365,8 @@ if flags.isDCM
         displayData.dispValue = mainLoopData.dispValue;
     end
 
-end
-
 %% continuous SVM NF
-if flags.isSVM
+elseif flags.isSVM
     blockNF = mainLoopData.blockNF;
     firstNF = mainLoopData.firstNF;
     dispValue = mainLoopData.dispValue;

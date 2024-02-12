@@ -34,6 +34,11 @@ if ~exist(fullfile(P.WorkFolder,'Settings')), mkdir(fullfile(P.WorkFolder,'Setti
 
 flags = getFlagsType(P);
 
+% Experiment specific settings.
+% TODO: move them out to a better place
+P.dfc_sliding_window_length = 30;
+P.isDFC = true;
+
 if strcmp(P.DataType, 'DICOM')
     fDICOM = true;
     fIMAPH = false;

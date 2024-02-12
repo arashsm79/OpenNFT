@@ -8,6 +8,7 @@ function [] = ptbSoundPreparation()
 
     % recover P (parameter) structure
     P = evalin('base', 'P');
+    P.TR = 1500;
         
     InitializePsychSound(0); % Initializes the sound driver, 1 pushes for low latency
 
@@ -24,18 +25,22 @@ function [] = ptbSoundPreparation()
     PsychPortAudio('UseSchedule', P.nf_sound.pahandle, 1);
 
     P.nf_sound.feedback_buffers = [];
-    P.nf_sound.levels = 10;
-    P.nf_sound.duration = 1;
-    P.nf_sound.modulation_frequency = 1;
+    P.nf_sound.levels = 8;
+    P.nf_sound.duration = P.TR / 1000; % TODO: this should be P.TR but P.TR is initialized after this
     P.nf_sound.modulation_amplitude = 30;
     P.nf_sound.beep_frequency= 100;
 
+    waves_per_tr = 2;
+
     % Generate buffers for different levels of feedback value
+    % The number of waves heard per TR gradually increases by two
     for i = 1:P.nf_sound.levels
         % each sample is 1/sampling_frequency seconds
         t = 0:1/P.nf_sound.sampling_frequency:P.nf_sound.duration;
+        modulation_frequency = waves_per_tr / (P.TR/1000);
+        waves_per_tr = waves_per_tr + 2;
         % Generate modulating signal
-        modulating_signal = P.nf_sound.modulation_amplitude * sin(2*pi*P.nf_sound.modulation_frequency*t*i);
+        modulating_signal = P.nf_sound.modulation_amplitude * sin(2*pi*modulation_frequency*t);
         % Generate beep signal modulated by the modulating signal
         beep_signal = sin(2*pi*P.nf_sound.beep_frequency*t) .* modulating_signal;
         % Normalize the signal to be between -1 and 1
@@ -50,7 +55,7 @@ function [] = ptbSoundPreparation()
     % Generate specific sounds
     snddata = MakeBeep(400, P.nf_sound.duration);
     P.nf_sound.cue_nf_start = PsychPortAudio('CreateBuffer', P.nf_sound.pahandle, snddata);
-    snddata = MakeBeep(400, P.nf_sound.duration);
+    snddata = MakeBeep(500, P.nf_sound.duration);
     P.nf_sound.cue_nf_stop = PsychPortAudio('CreateBuffer', P.nf_sound.pahandle, snddata);
     snddata = MakeBeep(300, P.nf_sound.duration);
     P.nf_sound.cue_baseline_start = PsychPortAudio('CreateBuffer', P.nf_sound.pahandle, snddata);
