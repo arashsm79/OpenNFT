@@ -643,6 +643,7 @@ class OpenNFT(QWidget):
                 self.ptbScreen.displayLock.acquire()
                 self.ptbScreen.display(self.feedbackQueue)
             elif config.USE_PTB_SOUND:
+                logger.info('Sent feedback on vol: {}', self.iteration - self.P['nrSkipVol'])
                 self.ptbSound.displayLock.acquire()
                 self.ptbSound.playSound(self.feedbackQueue)            
                 
@@ -1061,8 +1062,8 @@ class OpenNFT(QWidget):
         self.recorder.recordEventDuration(erd.Times.d0, self.iteration, elapsedTime)
         self.files_processed.append(fname)
 
-        self.leElapsedTime.setText(' {:.4f} '.format(elapsedTime))
-        self.leCurrentVolume.setText(' %d ' % self.iteration)
+        self.leElapsedTime.setText('{:.4f}'.format(elapsedTime))
+        self.leCurrentVolume.setText('%d' % self.iteration)
 
         # logger.info('**********  {}', self.recorder.files[-1])
         logger.info('Elapsed time: {:.4f} s', elapsedTime)

@@ -3,10 +3,7 @@ function ptbSoundPlay(displayData)
     %
     % input:
     % displayData - input data structure
-    %
-    % Note, synchronization issues are simplified, e.g. sync tests are skipped.
-    % End-user is advised to configure the use of PTB on their own workstation
-    % and justify more advanced configuration for PTB.
+
     tDispl = tic;
 
     P = evalin('base', 'P');
@@ -22,10 +19,13 @@ function ptbSoundPlay(displayData)
     % If the playback is not active or is finished or has not started yet, create a new schedule
     % http://psychtoolbox.org/docs/PsychPortAudio-GetStatus
     % status = PsychPortAudio(‘GetStatus’, pahandle);
-    if PsychPortAudio('GetStatus', P.nf_sound.pahandle).Active == 0
+    audio_status = PsychPortAudio('GetStatus', P.nf_sound.pahandle);
+    if audio_status.Active == 0
         % http://psychtoolbox.org/docs/PsychPortAudio-UseSchedule
         % PsychPortAudio(‘UseSchedule’, pahandle, enableSchedule [, maxSize = 128]);
         PsychPortAudio('UseSchedule', P.nf_sound.pahandle, 1);
+        fprintf('Playback stopped. Recreating the schedule.\n');
+        fprintf('state: %d, pos: %d\n', audio_status.State, audio_status.SchedulePosition);
     end
 
     switch feedbackType
@@ -35,7 +35,7 @@ function ptbSoundPlay(displayData)
                 case 1 % Baseline
                     % http://psychtoolbox.org/docs/PsychPortAudio-AddToSchedule
                     % [success, freeslots] = PsychPortAudio(‘AddToSchedule’, pahandle [, bufferHandle=0][, repetitions=1][, startSample=0][, endSample=max][, UnitIsSeconds=0][, specialFlags=0]);
-                    PsychPortAudio('AddToSchedule', P.nf_sound.pahandle, P.nf_sound.feedback_buffers(1), 1);
+                    PsychPortAudio('AddToSchedule', P.nf_sound.pahandle, P.nf_sound.baseline, 1);
                     fprintf('Added baseline sound.\n')
                 case 2 % Regualtion
                     fprintf('Added regulation sound at %d.\n', dispValue)
@@ -77,10 +77,12 @@ function ptbSoundPlay(displayData)
 
     % In case the playback is not active, we previously created the schedule and hopefully added a buffer to 
     % the schedule in one of the case conditions. Now we start the playback:
-    if PsychPortAudio('GetStatus', P.nf_sound.pahandle).Active == 0
+    if audio_status.Active == 0
         % http://psychtoolbox.org/docs/PsychPortAudio-Start
         % startTime = PsychPortAudio(‘Start’, pahandle [, repetitions=1] [, when=0] [, waitForStart=0] [, stopTime=inf] [, resume=0]);
         PsychPortAudio('Start', P.nf_sound.pahandle);
+        fprintf('Playback was stopped. Starting it again.\n');
+        fprintf('state: %d, pos: %d\n', audio_status.State, audio_status.SchedulePosition);
     end
 
     % EventRecords for PTB

@@ -30,15 +30,15 @@ function [] = ptbSoundPreparation()
     P.nf_sound.modulation_amplitude = 30;
     P.nf_sound.beep_frequency= 100;
 
-    waves_per_tr = 2;
+    waves_per_tr = 1;
+    % each sample is 1/sampling_frequency seconds
+    t = 0:1/P.nf_sound.sampling_frequency:P.nf_sound.duration;
 
     % Generate buffers for different levels of feedback value
     % The number of waves heard per TR gradually increases by two
     for i = 1:P.nf_sound.levels
-        % each sample is 1/sampling_frequency seconds
-        t = 0:1/P.nf_sound.sampling_frequency:P.nf_sound.duration;
         modulation_frequency = waves_per_tr / (P.TR/1000);
-        waves_per_tr = waves_per_tr + 2;
+        waves_per_tr = waves_per_tr + 1;
         % Generate modulating signal
         modulating_signal = P.nf_sound.modulation_amplitude * sin(2*pi*modulation_frequency*t);
         % Generate beep signal modulated by the modulating signal
@@ -51,6 +51,13 @@ function [] = ptbSoundPreparation()
         % bufferhandle = PsychPortAudio(‘CreateBuffer’ [, pahandle], bufferdata);
         P.nf_sound.feedback_buffers(end+1) = PsychPortAudio('CreateBuffer', P.nf_sound.pahandle, snddata);
     end
+
+    % Baseline sound. Two waves per TR.
+    modulation_frequency = 1 / (P.TR/1000);
+    modulating_signal = P.nf_sound.modulation_amplitude * sin(2*pi*modulation_frequency*t);
+    beep_signal = sin(2*pi*2*P.nf_sound.beep_frequency*t) .* modulating_signal;
+    snddata = beep_signal / max(abs(beep_signal));
+    P.nf_sound.baseline = PsychPortAudio('CreateBuffer', P.nf_sound.pahandle, snddata);
 
     % Generate specific sounds
     snddata = MakeBeep(400, P.nf_sound.duration);
