@@ -36,7 +36,7 @@ flags = getFlagsType(P);
 
 % Experiment specific settings.
 % TODO: move them out to a better place
-P.dfc_sliding_window_length = 30;
+P.dfc_sliding_window_length = 10;
 P.isDFC = true;
 
 if strcmp(P.DataType, 'DICOM')
