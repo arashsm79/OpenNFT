@@ -73,6 +73,7 @@ if P.isDFC
 
         % Calculate the FC between the two regions in the previous baseline block
         rhoBas = corrcoef(mainLoopData.scalProcTimeSeries(:,i_blockBAS)'); rhoBas = rhoBas(1,2);
+        rhoBas = 0.3;
 
         % NF condition is at index 2 in protcond. Get the onoffset for the corresponding nf block 
         % and create a sequence from the start of onoffset to the end.
@@ -86,9 +87,9 @@ if P.isDFC
             rhoCond = corrcoef(mainLoopData.scalProcTimeSeries(:,i_blockNF)'); rhoCond = rhoCond(1,2);
             % assign the same value to all of the ROIs since the correlation between them is the same
             norm_percValues(1:loopNrROIs) = rhoCond - rhoBas;
-            fprintf("dFC window = %d : %d, with coeff: %f\n", dfc_window_start, dfc_window_end, rhoCond);
+            fprintf("dFC window = %d : %d, with cond-coeff: %f, bas-coeff: %f\n", dfc_window_start, dfc_window_end, rhoCond, rhoBas);
         else
-            % We are not deep enough into the NF block so accomodate a window of the given size
+            % We are not deep enough into the NF block to accomodate a window of the given size
             norm_percValues(1:loopNrROIs) = 0;
         end
 
@@ -112,6 +113,84 @@ if P.isDFC
         end
 
         mainLoopData.norm_percValues(indVolNorm,:) = norm_percValues;
+        mainLoopData.dispValues(indVolNorm) = dispValue;
+        mainLoopData.dispValue = dispValue;
+    else
+        % We are in a condition other than nf regulation, set the dispValue to its minimum value
+        tmp_fbVal = P.MinFeedbackVal;
+        mainLoopData.dispValue = P.MinFeedbackVal;                                    
+    end
+
+    mainLoopData.vectNFBs(indVolNorm) = tmp_fbVal;
+    mainLoopData.blockNF = blockNF;
+    mainLoopData.firstNF = firstNF;
+    mainLoopData.Reward = '';
+
+    displayData.Reward = mainLoopData.Reward;
+    displayData.dispValue = mainLoopData.dispValue;
+
+%% Continuous PSC NF PSC
+elseif P.isNFPSC
+    blockNF = mainLoopData.blockNF;
+    firstNF = mainLoopData.firstNF;
+
+    % NF estimation condition
+    if condition == 2
+
+        % Check if we are at the beginning of an NF regulation block
+        % The condition index for Regulation block is 2
+        k = cellfun(@(x) x(1) == indVolNorm, P.ProtCond{ 2 });
+        if any(k) % If we are at the beginning of any of the regulation blocks
+            % Update the value of blockNF to indicate the current NF block value that we are in
+            blockNF = find(k);
+            firstNF = indVolNorm;
+        end
+
+        % Get the baseline block immediately preceding the current NF regulation block
+        % iblockBAS is a list of volume indexes in that baseline block.
+        i_blockBAS = [];
+        if blockNF<2 % If we are in the first NF block, get the first baseline block
+            % according to json protocol
+            % index for Baseline condition is 1
+            i_blockBAS = (P.ProtCond{ 1 }{blockNF}(1)+nVolDelay):(P.ProtCond{ 1 }{blockNF}(end));
+        else % otherwise get the baseline block before the current nf block
+            for iBas = 1:blockNF
+                i_blockBAS = (P.ProtCond{ 1 }{iBas}(1)+nVolDelay):(P.ProtCond{ 1 }{iBas}(end));
+            end
+        end
+
+        roi_score = [];
+        for index_roi = 1:loopNrROIs
+            % Calculate the FC between the two regions in the previous baseline block
+            rhoBas = median(sort(mainLoopData.kalmanProcTimeSeries(index_roi,i_blockBAS)));
+            nfmin = min(mainLoopData.kalmanProcTimeSeries(index_roi,:));
+            nfmax = max(mainLoopData.kalmanProcTimeSeries(index_roi,:));
+            rhoCond = mainLoopData.kalmanProcTimeSeries(index_roi,indVolNorm);
+            roi_score(index_roi) = (rhoCond - rhoBas) / (nfmax - nfmin);
+            fprintf("roiscore = %d, cond-coeff: %f, bas-coeff: %f\n", roi_score(index_roi), rhoCond, rhoBas);
+        end
+
+
+        % compute average %SC feedback value
+        % P.RoiAnatOperation is a piece of matlab code defined in the .ini file of the experiment
+        % It could for example be a string that contains 'mean(norm_percValues)'
+        tmp_fbVal = abs(roi_score(1) - roi_score(2));
+        dispValue = round(P.MaxFeedbackVal*tmp_fbVal, P.FeedbackValDec);
+
+        % [0...P.MaxFeedbackVal], for Display
+        if ~P.NegFeedback && dispValue < 0
+            dispValue = 0;
+        elseif P.NegFeedback && dispValue < P.MinFeedbackVal
+             dispValue = P.MinFeedbackVal;
+        end
+        if dispValue < P.MinFeedbackVal
+             dispValue = P.MinFeedbackVal;
+        end
+        if dispValue > P.MaxFeedbackVal
+            dispValue = P.MaxFeedbackVal;
+        end
+
+        mainLoopData.norm_percValues(indVolNorm,:) = tmp_fbVal;
         mainLoopData.dispValues(indVolNorm) = dispValue;
         mainLoopData.dispValue = dispValue;
     else

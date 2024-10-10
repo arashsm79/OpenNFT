@@ -37,7 +37,8 @@ flags = getFlagsType(P);
 % Experiment specific settings.
 % TODO: move them out to a better place
 P.dfc_sliding_window_length = 10;
-P.isDFC = true;
+P.isDFC = false;
+P.isNFPSC = true;
 
 if strcmp(P.DataType, 'DICOM')
     fDICOM = true;
@@ -77,7 +78,7 @@ if P.UseTCPData
 end
 
 %% SPM Settings
-% It is recommended using the same interpolation for real-time
+% It is recommended to use the same interpolation values for both real-time
 % realign and reslice functions. See spm_realign_rt() for further comments.
 % 'interp' 4 is B-Spline 4th order in SPM12
 mainLoopData.flagsSpmRealign = struct('quality',.9,'fwhm',5,'sep',4,...
