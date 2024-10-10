@@ -1,0 +1,65 @@
+[project]
+name = "OpenNFT"
+version = "1.0.0rc0"
+description = "An open-source Python/Matlab framework for real-time fMRI neurofeedback training"
+readme = "README.md"
+requires-python = ">=3.9"
+license = {text = "GPL-3.0"}
+authors = [
+    {name = "OpenNFT Team", email = "opennft@gmail.com"}
+]
+keywords = ["neurofeedback", "fMRI", "real-time", "matlab"]
+classifiers = [
+    "License :: OSI Approved :: GPL-3.0 License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: Implementation :: CPython"
+]
+dependencies = [
+    "loguru>=0.7.2",
+    "matlabengine",
+    "nibabel>=5.3.0",
+    "numpy>=2.0.2",
+    "opencv-python-headless>=4.10.0.84",
+    "pydicom>=2.4.4",
+    "pyniexp>=0.27.3",
+    "pyqt5>=5.15.11",
+    "pyqtgraph>=0.13.7",
+    "python-rtspm>=0.2.7",
+    "scipy>=1.13.1",
+    "setuptools>=75.1.0",
+    "watchdog>=5.0.3",
+    "wheel>=0.44.0",
+]
+
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[tool.setuptools]
+# Package discovery, including exclusion of certain test packages
+packages = {find = {exclude = ["tests", "*.tests", "*.tests.*", "tests.*"]}}
+
+[tool.setuptools.package-data]
+opennft = [
+    "configs/*",
+    "ui/*.ui",
+    "ui/images/*",
+    "plugins/*",
+    "matlab/*.m"
+]
+
+[tool.uv.sources]
+matlabengine = { path = "../../Apps/MATLAB/R2024b/extern/engines/python" }
+
+[project.scripts]
+opennft_console = "opennft.__main__:main"
+run_matlab = "opennft.runmatlab:main"
+
+[project.gui-scripts]
+opennft = "opennft.__main__:main"
